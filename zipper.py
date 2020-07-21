@@ -107,7 +107,19 @@ def geotag(df):
                                  concatenate_df.loc[i, 'longitude']), 
                                 alt=int(concatenate_df.loc[i, 'elevation']), 
                                 timeStamp=concatenate_df.loc[i, 'timestamp'])
-        photo.modGPSData(info, 'geotagged/'+ frame)
+        photo.modGPSData(info, 'geotagged frames/'+ frame)
         i+=1
     delta = datetime.datetime.now()- start
     print('Done in '+str(delta))
+
+def classify(df):
+	class_key = 'Undefined = 0, Loam = 1, Sand = 2, Gravel = 3, Cobble = 4'
+	i = 0
+	for frame in df['frame']:
+                print(class_key)
+                print('Displaying '+frame+' ...')
+		image = Image.open('frames/'+frame)
+		image.show()
+		sed_type = int(input('Sediment type: '))
+		df.loc[i,'sed_type'] = sed_type
+		i+=1
