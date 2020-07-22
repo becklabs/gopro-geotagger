@@ -96,13 +96,11 @@ def track_extract(gpx_filename, gp_timezone = 'US/Eastern'):
 #track_extract(gpx_filename = 'track-71520-23237pm.gpx')
 
 def concatenate(gopro_filename, gpx_filename, gp_timezone = 'US/Eastern'):
-    global track_ex
-    global gp_ex
     track_ex = track_extract(gpx_filename, gp_timezone)
     gp_ex = gp_extract(gopro_filename)
     concatenate_df = track_ex
-    i = 0
     print('Matching frames from: '+gopro_filename+ ' to points on: '+ gpx_filename)
+    i = 0
     for gpstime in tqdm(track_ex['timestamp']):
         timedeltas = []
         for gptime in gp_ex['timestamp']:
