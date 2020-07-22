@@ -7,3 +7,6 @@
 # Usage
 - create a dataframe using the concatenate function: df = concatenate(gopro_filename,track_filename)
 - use geotag(df) to create a folder of geotagged images or classify(df) to classify each matched image within python
+
+# Notes
+- Have to set your own path for subprocess
