@@ -1,1 +1,1 @@
-This is where to put your gps track (gpx or csv)
+This is where to put your gps track or tracks (gpx or csv)
