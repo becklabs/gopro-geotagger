@@ -15,42 +15,44 @@ from tqdm import tqdm
 import gpxpy
 from dateutil.parser import *
 import pytz
-import piexif
-import pyexiv2
 from GPSPhoto import gpsphoto
 import dateparser
+import subprocess
+import sys
+import tkinter
 
 def gp_extract(filename, gp_timezone = 'US/Eastern'):
     """Returns a dataframe containing the name of each frame in the gopro video and its respective timestamp"""
+    global gopro_df
     frames = []
     path = 'frames/'
-    video = cv2.VideoCapture(filename)
-    total = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-    print('Writing '+str(total)+' frames from ' + filename + ' to '+ path+ '...')
-    est = datetime.timedelta(seconds=(.0503074*total))
-    print('Estimated processing time: '+str(est))
-    start=datetime.datetime.now()
     cap = cv2.VideoCapture(filename)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    est = datetime.timedelta(seconds=(.0503074*total_frames))
+    print('Estimated processing time: '+str(est))
+    sys.stdout.flush()
+    pbar = tqdm(total=total_frames, unit='frames',desc='Writing '+str(total_frames)+' frames from ' + filename + ' to '+ path)
     i=0
     while(cap.isOpened()):
         ret, frame = cap.read()
         if ret == False:
             break
-        frames.append(str(i)+'.jpg')
-        cv2.imwrite(path +str(i)+'.jpg',frame)
+        frames.append(filename+'_'+str(i)+'.jpg')
+        cv2.imwrite(path+filename+'_'+ str(i)+'.jpg',frame)
         i+=1
+        pbar.update(1)
+    pbar.close()
     cap.release()
     cv2.destroyAllWindows()
-    delta = datetime.datetime.now()- start
-    print('Done in '+str(delta))
     
     #add timestamps to each frame
-    subprocess.call([r'C:\Users\beck\Documents\CSCR\gpmf-extract\forallTimeExtraction.bat'])
+    subprocess.Popen([r'C:\Users\beck\Documents\CSCR\gpmf-extract\forallTimeExtraction.bat'])
     time.sleep(3)
     filename.replace('mp4','MP4')
     gp_telem = pd.read_csv(filename+'.csv')
     i = 0
-    for date in gp_telem['date']:
+    sys.stdout.flush()
+    for date in tqdm(gp_telem['date'],desc='Converting gopro timestamps',unit='timestamps'):
         gp_telem.loc[i,'date'] = datetime.datetime.strptime(gp_telem['date'][i][:-1],'%Y-%m-%dT%H:%M:%S.%f').replace(tzinfo=pytz.UTC)
         i+=1
     gopro_df = pd.DataFrame()
@@ -59,27 +61,29 @@ def gp_extract(filename, gp_timezone = 'US/Eastern'):
     return gopro_df
 #gp_extract = gp_extract('GH010001.MP4')
 
-def track_extract(gpx_filename, gp_timezone = 'US/Eastern'):
+def track_extract(gps_filename, gp_timezone = 'US/Eastern'):
     """Returns a dataframe containing the telemetry collected from the gpx file"""
-    print('Parsing '+ gpx_filename + '...')
-    begin_time = datetime.datetime.now()
-    ext = gpx_filename.split('.')
+    ext = gps_filename.split('.')
     global track_name
     track_name = ext[0]
     if ext[1] == 'csv':
-        gps_telem = pd.read_csv(gpx_filename)
+        print('Parsing '+ gps_filename + '...')
+        begin_time = datetime.datetime.now()
+        gps_telem = pd.read_csv(gps_filename)
         gps_telem = gps_telem.rename(columns={'lat': 'latitude', 'lon': 'longitude','ele':'elevation','time':'timestamp'})
         i = 0
         for timestamp in gps_telem['timestamp']:
             gps_telem.loc[i,'timestamp'] = dateparser.parse(gps_telem.loc[i,'timestamp']).replace(tzinfo=pytz.UTC)
             i+=1
+        print('Done in '+ str(datetime.datetime.now() - begin_time))
     if ext[1] == 'gpx':
         points = list()
-        with open(gpx_filename,'r') as gpxfile:
+        with open(gps_filename,'r') as gpxfile:
             gpx = gpxpy.parse(gpxfile)
             for track in gpx.tracks:
                 for segment in track.segments:
-                    for point in segment.points:
+                    sys.stdout.flush()
+                    for point in tqdm(segment.points,desc='Parsing '+ gps_filename,unit='points'):
                         dict = {'timestamp': point.time,
                                 'latitude': point.latitude,
                                 'longitude': point.longitude,
@@ -88,20 +92,69 @@ def track_extract(gpx_filename, gp_timezone = 'US/Eastern'):
                         points.append(dict)
         gps_telem = pd.DataFrame.from_dict(points)
         i = 0
-        for timestamp in gps_telem['timestamp']:
-            gps_telem.loc[i,'timestamp'] = gps_telem.loc[i,'timestamp'].to_pydatetime().replace(tzinfo=pytz.UTC).astimezone(pytz.timezone(gp_timezone))
+        sys.stdout.flush()
+        for timestamp in tqdm(gps_telem['timestamp'],desc='Converting gps timestamps',unit='points'):
+            gps_telem.loc[i,'timestamp'] = gps_telem.loc[i,'timestamp'].to_pydatetime().replace(tzinfo=pytz.UTC) #.astimezone(pytz.timezone(gp_timezone))
             i+=1
-    print('Done in '+ str(datetime.datetime.now() - begin_time))
     return gps_telem
-#track_extract(gpx_filename = 'track-71520-23237pm.gpx')
+#track_extract(gps_filename = 'track-71520-23237pm.gpx')
 
-def concatenate(gopro_filename, gpx_filename, gp_timezone = 'US/Eastern'):
-    track_ex = track_extract(gpx_filename, gp_timezone)
-    gp_ex = gp_extract(gopro_filename)
+def concatenate(gopro_filename=['null'], gps_filename=['null'], gp_timezone = 'US/Eastern',autoscan = True):
+    """
+    
+
+    Parameters
+    ----------
+    gopro_filename : List
+        Filename list of gopro videos desired to be processed.
+    gpx_filename : List
+        Filename list of gps tracks desired to be processed.
+    gp_timezone : TYPE, optional
+        DESCRIPTION. The timezone associated with gopro video. The default is 'US/Eastern'.
+    autoscan : TYPE, Boolean
+        DESCRIPTION. The default is True. If True, all gopro and gps files in the working directory are processed
+
+    Returns
+    -------
+    concatenate_df : TYPE
+        DESCRIPTION.
+
+    """
+    global track_ex
+    global gp_ex
+    gp_ex = pd.DataFrame(columns=['frame','timestamp'])
+    track_ex = pd.DataFrame()
+    if autoscan == True:
+        gopro_filenames = []
+        gps_filenames = []
+        for filename in os.listdir():
+            if 'MP4' in filename.split('.'):
+                if len(filename.split('.')) <= 2:
+                    gopro_filenames.append(filename)
+                    df = gp_extract(filename)
+                    gp_ex = gp_ex.append(df,ignore_index=True)
+            if 'gpx' in filename.split('.'):
+                if len(filename.split('.')) <= 2:
+                    gps_filenames.append(filename)
+                    df = track_extract(filename, gp_timezone)
+                    track_ex = track_ex.append(df,ignore_index=True)
+            if 'csv' in filename.split('.'):
+                if len(filename.split('.')) <= 2:
+                    gps_filenames.append(filename)
+                    df = track_extract(filename, gp_timezone)
+                    track_ex = track_ex.append(df,ignore_index=True)
+    
+    if autoscan == False:
+        for filename in gopro_filename:
+            df = gp_extract(gopro_filename)
+            gp_ex = gp_ex.append(df,ignore_index=True)
+        for filename in gps_filename:
+            df = track_extract(gps_filename)
+            track_ex = track_ex.append(df,ignore_index=True)
     concatenate_df = track_ex
-    print('Matching frames from: '+gopro_filename+ ' to points on: '+ gpx_filename)
     i = 0
-    for gpstime in tqdm(track_ex['timestamp']):
+    sys.stdout.flush()
+    for gpstime in tqdm(track_ex['timestamp'],desc='Matching frames from: '+str(gopro_filenames)+ ' to points on: '+ str(gps_filenames),unit='frames'):
         timedeltas = []
         for gptime in gp_ex['timestamp']:
             delta = gpstime-gptime
@@ -109,14 +162,21 @@ def concatenate(gopro_filename, gpx_filename, gp_timezone = 'US/Eastern'):
         ix = gp_ex.loc[timedeltas.index(min(timedeltas)), 'frame']
         concatenate_df.loc[i, 'frame'] = ix
         i += 1
+    #i = 0
+    #for frame in concatenate_df['frame']:
+        #if i+2<len(concatenate_df['frame']):
+            #if concatenate_df.loc[i,'frame'] == concatenate_df.loc[i+2,'frame']:
+                #concatenate_df.drop(labels=i,axis=0)
+                #i+=1
+        #else:
+            #break
     return concatenate_df
 
 def geotag(df):
-    print('Geotagging '+ str(len(df['frame'])) + ' frames to path: '+'geotagged_'+track_name+'/')
-    start=datetime.datetime.now()
     os.mkdir('geotagged_'+track_name+'/')
     i = 0
-    for frame in df['frame']:
+    sys.stdout.flush()
+    for frame in tqdm(df['frame'],desc='Geotagging '+ str(len(df['frame'])) + ' frames to path: '+'geotagged_'+track_name+'/',unit='frames'):
         photo = gpsphoto.GPSPhoto('frames/'+frame)
         info = gpsphoto.GPSInfo((df.loc[i, 'latitude'], 
                                  df.loc[i, 'longitude']), 
@@ -124,8 +184,6 @@ def geotag(df):
                                 timeStamp=df.loc[i, 'timestamp'])
         photo.modGPSData(info, 'geotagged_'+track_name+'/'+ frame)
         i+=1
-    delta = datetime.datetime.now()- start
-    print('Done in '+str(delta))
 
 def classify(df):
     class_key = 'Undefined = 0, Loam = 1, Sand = 2, Gravel = 3, Cobble = 4'
@@ -135,6 +193,17 @@ def classify(df):
         print('Displaying '+frame+' ...')
         image = Image.open('frames/'+frame)
         image.show()
+        sed_type = int(input('Sediment type: '))
+        df.loc[i,'sed_type'] = sed_type
+        i+=1
+def pyplot_classify(df):
+    class_key = 'Undefined = 0, Loam = 1, Sand = 2, Gravel = 3, Cobble = 4'
+    i = 0
+    for frame in df['frame']:
+        print(class_key)
+        print('Displaying '+frame+' ...')
+        img = mpimg.imread('frames/'+frame)
+        plt.imshow(img)
         sed_type = int(input('Sediment type: '))
         df.loc[i,'sed_type'] = sed_type
         i+=1
