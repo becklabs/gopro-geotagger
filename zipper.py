@@ -112,7 +112,7 @@ def concatenate(gopro_filename=['null'], gps_filename=['null'], gp_timezone = 'U
     gp_timezone : TYPE, optional
         DESCRIPTION. The timezone associated with gopro video. The default is 'US/Eastern'.
     autoscan : TYPE, Boolean
-        DESCRIPTION. The default is True. If True, all gopro and gps files in the working directory are processed
+        DESCRIPTION. The default is True. If True, all gopro and gps files in the working directory are processed.
 
     Returns
     -------
