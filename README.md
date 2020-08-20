@@ -12,3 +12,4 @@
 - Have to set your own path for subprocess
 # Credits
 - @iackm for the gopro timestamp extraction executable
+ - @KonradIT for gpmf-exract Javascript package
