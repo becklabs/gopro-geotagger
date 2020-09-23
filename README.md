@@ -1,3 +1,4 @@
+Note: Deprecated! geotag tool is much more efficent/doesn't require js calls
 # gopro-gpx-zipper
 - Developed in order to provide telemetry data for underwater gopro footage
 - Reads in gopro mp4 and gpx file 
